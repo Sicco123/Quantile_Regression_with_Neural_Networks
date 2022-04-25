@@ -1,5 +1,14 @@
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+
+def plot_features(df, date_time, plot_cols):
+    plot_features = df[plot_cols]
+    plot_features.index = date_time
+    plots = plot_features.plot(subplots=True)
+    return plots
+
+
 source = "empirical_data"
 save_location = "data_per_country"
 start = "1973-Q1"
@@ -19,6 +28,9 @@ data_hp = data_hp.loc[data_hp.index[data_hp['Dates'] == start_date][0]:data_hp.i
 data_sv = pd.read_csv(source+"/sv.csv", index_col = 0)
 data_sv = data_sv.loc[data_sv.index[data_sv['dates'] == start_date][0]:data_sv.index[data_sv['dates'] == end_date][0], :]
 
+date_time_series = pd.to_datetime(data_ts['Dates'])
+
+
 
 for country in data_gdp.columns[1:]:
     df_country = pd.DataFrame([])
@@ -34,6 +46,10 @@ for country in data_gdp.columns[1:]:
     df_country['gdp'] = data_gdp[country].reset_index(drop = True)
 
     ### Store to csv
+
+    plots = plot_features(df_country, date_time_series, ["gdp", 'nfci', 'ts', 'hp', 'sv'])
+    plt.savefig(source + "/" + save_location+"/"+"plots_per_country/"+country+".png")
+    plt.close()
     df_country.to_csv(path_or_buf = source + "/" + save_location+"/"+country+".csv")
 
 

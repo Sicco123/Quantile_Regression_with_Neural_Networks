@@ -35,7 +35,7 @@ def objective_function(objective_y, input, quantiles):
     output_y_tiled = tf.tile(objective_y, [quantile_length])
 
     ### prepare predicted values
-    predicted_y_tiled = tf.reshape(tf.transpose(predicted_y), output_y_tiled.shape)
+    predicted_y_tiled = tf.reshape(tf.transpose(predicted_y), [-1] ) #output_y_tiled.shape
 
     ### objective function
     diff_y = output_y_tiled - predicted_y_tiled
