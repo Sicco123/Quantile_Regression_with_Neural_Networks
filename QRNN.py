@@ -1,9 +1,13 @@
 import tensorflow as tf
+import numpy as np
+import matplotlib.pyplot as plt
 from keras.layers import Dense  # for creating regular densely-connected NN layers.
+from keras.layers import Dropout
 from keras.layers import Conv1D
 from keras.layers import LSTM
 from keras.layers import Flatten  # to flatten the input shape
-from l1_penalization import l1_p
+from l1_penalization import l1_p, non_cross_transformation
+
 
 class QRNN_Dense(tf.keras.Model):
     def __init__(self, hidden_dim_1, hidden_dim_2, output_dim, penalty_1 = 0, penalty_2 = 0):
@@ -38,13 +42,16 @@ class QRNN_Conv(tf.keras.Model):
 class QRNN_LSTM(tf.keras.Model):
     def __init__(self, hidden_dim,  output_dim, penalty_1 = 0, penalty_2 = 0):
         super().__init__()
-        self.layer_1 = LSTM(hidden_dim, return_sequences = True)
-        self.layer_2 = l1_p(number_of_quantiles=output_dim, activation="sigmoid", penalty_1 = penalty_1, penalty_2 = penalty_2)
+        self.layer_1 = LSTM(hidden_dim, return_sequences = False, kernel_regularizer = tf.keras.regularizers.L2(penalty_2))
+        self.layer_2 = Dropout(0.2)
+        self.layer_3 = l1_p(number_of_quantiles=output_dim, activation="sigmoid", penalty_1 = penalty_1, penalty_2 = penalty_2)
+
         # possible add "Dropout" to prevent overfitting
 
     def call(self, inputs):
         x = self.layer_1(inputs)
-        self.pred, self.pred_mod = self.layer_2(x) # Output is a dictionary with the objective func input and intermediate results.
+        x = self.layer_2(x)
+        self.pred, self.pred_mod = self.layer_3(x) # Output is a dictionary with the objective func input and intermediate results.
         return self.pred
 
 
@@ -110,11 +117,11 @@ def optimize_l1_NMQN(window, model, lambda_objective_function, max_deep_iter, le
 
     #### Early stopping
     early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
-                                                      patience=2,
+                                                      patience=5,
                                                       mode='min')
 
     #####  Compile keras model
-    model.compile(optimizer=tf.keras.optimizers.RMSprop(learning_rate=learning_rate),  # default='rmsprop', an algorithm to be used in backpropagation
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),  # default='rmsprop', an algorithm to be used in backpropagation
                   loss=lambda_objective_function, # Loss function to be optimized. A string (name of loss function), or a tf.keras.losses.Loss instance.
                   #metrics=['Accuracy'], # List of metrics to be evaluated by the model during training and testing. Each of this can be a string (name of a built-in function), function or a tf.keras.metrics.Metric instance.
                   steps_per_execution=1 # Defaults to 1. The number of batches to run during each tf.function call. Running multiple batches inside a single tf.function call can greatly improve performance on TPUs or small models with a large Python overhead.
@@ -123,7 +130,7 @@ def optimize_l1_NMQN(window, model, lambda_objective_function, max_deep_iter, le
     ##### Fit keras model on the dataset
     model.fit(window.train,  # target data
               epochs=max_deep_iter, # default=1, Number of epochs to train the model. An epoch is an iteration over the entire x and y data provided
-              verbose=1, # default='auto', ('auto', 0, 1, or 2). Verbosity mode. 0 = silent, 1 = progress bar, 2 = one line per epoch. 'auto' defaults to 1 for most cases, but 2 when used with ParameterServerStrategy.
+              verbose=0, # default='auto', ('auto', 0, 1, or 2). Verbosity mode. 0 = silent, 1 = progress bar, 2 = one line per epoch. 'auto' defaults to 1 for most cases, but 2 when used with ParameterServerStrategy.
               #validation_split=validation_split, # default=0.0, Fraction of the training data to be used as validation data. The model will set apart this fraction of the training data, will not train on it, and will evaluate the loss and any model metrics on this data at the end of each epoch.
               validation_data=window.val, # default=None, Data on which to evaluate the loss and any model metrics at the end of each epoch.
               shuffle=True,  # default=True, Boolean (whether to shuffle the training data before each epoch) or str (for 'batch').
@@ -137,3 +144,40 @@ def optimize_l1_NMQN(window, model, lambda_objective_function, max_deep_iter, le
               )
 
     return model
+
+def plot_results(labels, output, quantiles):
+    predictions = output
+
+    x = np.arange(0, len(labels), 1)
+    plt.ylabel(f'gdp')
+    for idx, quantile in enumerate(quantiles):
+        plt.plot(x, predictions[idx,:], color=f'C{idx}', label=f'Q-{quantile:.2f}')
+
+    plt.plot(x, labels, color='k', label='labels')
+    plt.legend(ncol=int(len(quantiles) / 2 + 1), fontsize='x-small')
+    plt.xlabel('Time [h]')
+    plt.show()
+
+
+def test_performance(df, model, split, window_length, quantiles, show_plot = False):
+    weights = model.layers[-1].weights
+    labels = df[split:].values[:,-1]
+    store_feasible_output = []
+
+    for t in range(len(df)-window_length):
+        output = model.predict(df[t:t+window_length].values[np.newaxis])
+        feasible_output = non_cross_transformation(output, weights[0], weights[1]).numpy()[0]
+        feasible_output = np.squeeze(feasible_output)
+        store_feasible_output.append(feasible_output)
+
+    forecast = np.column_stack(store_feasible_output[split-window_length:])
+    if show_plot:
+        plot_results(labels, forecast, quantiles)
+
+    print(f'The number of labels:{len(labels)}. The number of forecasts:{len(forecast[0])}.')
+
+    quantile_loss = quantile_risk(forecast, labels, quantiles).numpy()
+    print(quantile_loss)
+    return quantile_loss
+
+

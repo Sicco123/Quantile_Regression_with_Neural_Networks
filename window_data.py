@@ -108,17 +108,20 @@ class WindowGenerator():
       plt.show()
 
   def plot_test_result(self, model, quantiles , plot_col = 'gdp'):
-      inputs, labels = self.example
+      help_test = self.test_df.values
+      inputs, labels = help_test[:-1,:], help_test[1:,4]
+      inputs = np.expand_dims(inputs, axis = 0)
       res = model(inputs)
       predictions = model.pred_mod
+      predictions = np.squeeze(predictions, axis=0)
 
       x = np.arange(0,len(labels),1)
       plt.ylabel(f'gdp')
       for idx, quantile in enumerate(quantiles):
           plt.plot(x, predictions[:,idx], color = f'C{idx}', label=f'Q-{quantile:.2f}' )
 
-      plt.plot(x, labels[:, 0, 0], color='k', label='labels')
-      plt.legend(ncol=int(len(quantiles) / 2 + 2), fontsize='x-small')
+      plt.plot(x, labels, color='k', label='labels')
+      plt.legend(ncol=int(len(quantiles) / 2 + 1), fontsize='x-small')
       plt.xlabel('Time [h]')
       plt.show()
 

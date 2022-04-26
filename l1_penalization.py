@@ -51,3 +51,22 @@ class l1_p(layers.Layer): #This class builds on the layer class of keras.
         self.add_loss(self.penalty_2 * l2_penalty)
 
         return predicted_y, predicted_y_modified
+
+def non_cross_transformation(predicted_y, delta_coef_matrix, delta_0_matrix):
+    ### Build beta matrix
+    delta_mat = tf.concat([delta_0_matrix, delta_coef_matrix], axis=0)
+    beta_mat = tf.transpose(tf.cumsum(tf.transpose(delta_mat)))
+
+    delta_vec = delta_mat[1:, 1:]  # leave out the first column
+    delta_0_vec = delta_mat[0:1, 1:]
+    delta_minus_vec = tf.maximum(0.0, -delta_vec)
+    delta_minus_vec_sum = tf.reduce_sum(delta_minus_vec, axis=0)
+    delta_0_vec_clipped = tf.clip_by_value(delta_0_vec,  # clip to ensure feasibility of delta_0_vec
+                                           clip_value_min=tf.reshape(delta_minus_vec_sum, delta_0_vec.shape),
+                                           clip_value_max=tf.convert_to_tensor(
+                                               (np.ones(np.shape(delta_0_vec)) * np.inf), dtype='float32'))
+
+    part_1 = predicted_y -  beta_mat[0, :]
+    transformed_y = part_1 + tf.cumsum(tf.concat([beta_mat[0:1, 0:1],
+                                                 delta_0_vec_clipped], axis=1), axis=1)
+    return transformed_y
