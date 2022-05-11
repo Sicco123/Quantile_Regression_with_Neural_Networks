@@ -5,45 +5,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 from data_simulation import moon_data
 from l1_penalization import l1_p
+from optimization import  objective_function
+from QRNN import DNN
 
-class QRNN(tf.keras.Model):
-    def __init__(self, hidden_dim_1, hidden_dim_2, output_dim, penalty_1 = 0, penalty_2 = 0):
-        super().__init__()
-        self.layer_1 = Flatten()
-        self.layer_2 = Dense(units=hidden_dim_1, activation="sigmoid", kernel_regularizer = tf.keras.regularizers.L2(penalty_2))  # Choose correct number of units
-        self.layer_3 = Dense(units=hidden_dim_2, activation="sigmoid", kernel_regularizer = tf.keras.regularizers.L2(penalty_2))
-        self.layer_4 = l1_p(number_of_quantiles=output_dim, activation="sigmoid", penalty_1 = penalty_1, penalty_2 = penalty_2)
-        # possible add "Dropout" to prevent overfitting
+def plot_quantiles(x_test, y_test, tau_vec, quantiles, save_name):
+    plt.scatter(x_test, y_test)
+    for i in range(len(tau_vec)):
+        plt.scatter(x_test, quantiles[:, i])
+    plt.savefig(save_name)
+    plt.show()
 
-    def call(self, inputs):
-        x = self.layer_1(inputs)
-        x = self.layer_2(x)
-        x = self.layer_3(x)
-        self.pred, self.pred_mod = self.layer_4(x) # Output is a dictionary with the objective func input and intermediate results.
-        return self.pred
-
-def objective_function(objective_y, input, quantiles):
-    predicted_y = input
-
-    ### prepare quantiles
-    quantile_length = len(quantiles)
-    quantile_tf = tf.convert_to_tensor(quantiles, dtype='float32')
-    quantile_tf_tiled = tf.repeat(tf.transpose(quantile_tf), [len(objective_y)])
-
-    ### prepare objective value
-    objective_y = tf.squeeze(tf.cast(objective_y, dtype = 'float32'))
-    output_y_tiled = tf.tile(objective_y, [quantile_length])
-
-    ### prepare predicted values
-    predicted_y_tiled = tf.reshape(tf.transpose(predicted_y), [-1] ) #output_y_tiled.shape
-
-    ### objective function
-    diff_y = output_y_tiled - predicted_y_tiled
-    quantile_loss = tf.reduce_mean(diff_y * (quantile_tf_tiled - (tf.sign(-diff_y) + 1) / 2))
-
-    return quantile_loss
-
-def optimize_l1_NMQN_RMSProp(X_train, y_train, model, lambda_objective_function, learning_rate,  max_deep_iter, penalty1=0, penalty2=0):
+def optimize_neural_net(X_train, y_train, model, lambda_objective_function, learning_rate,  max_deep_iter, penalty1=0, penalty2=0):
     #####  Compile keras model
     model.compile(optimizer=tf.keras.optimizers.RMSprop(learning_rate=learning_rate),  # default='rmsprop', an algorithm to be used in backpropagation
                   loss=lambda_objective_function, # Loss function to be optimized. A string (name of loss function), or a tf.keras.losses.Loss instance.
@@ -70,6 +42,8 @@ def optimize_l1_NMQN_RMSProp(X_train, y_train, model, lambda_objective_function,
 
     return model
 
+
+
 def main():
     ### Magic numbers
     n = 2000    # number of observations
@@ -84,25 +58,24 @@ def main():
     hidden_dim_1 = 4
     hidden_dim_2 = 4
 
-    x, y = moon_data(n, input_dim)
+    #simulate data
+    x, y, true_quantiles = moon_data(n, input_dim)
     split_index = int(train_test_frac*n)
     x_train, y_train = x[:split_index], y[:split_index]
     x_test, y_test = x[split_index:], y[split_index:]
+    true_quantiles_test = true_quantiles[split_index:]
 
     ### Model fitting
-    nmqn = QRNN(hidden_dim_1, hidden_dim_2, len(tau_vec), penalty_1, penalty_2)
+    model = DNN(hidden_dim_1, hidden_dim_2, len(tau_vec), penalty_1, penalty_2)
     loss_fn = lambda x, z: objective_function(x, z, tau_vec)
-    nmqn_res = optimize_l1_NMQN_RMSProp(x_train, y_train, nmqn, loss_fn, learning_rate, epochs, penalty_1, penalty_2)
+    model = optimize_neural_net(x_train, y_train, model, loss_fn, learning_rate, epochs)
 
     print("Evaluate")
-    res = nmqn_res(x_test)
-    y_modified = nmqn_res.pred_mod
+    res = model(x_test)
+    y_modified = model.pred_mod
 
-    plt.scatter(x_test, y_test)
-    for i in range(len(tau_vec)):
-        plt.scatter(x_test, y_modified[:,i])
-    plt.show()
-
+    plot_quantiles(x_test, y_test, tau_vec, y_modified, 'moon_plots/estimation_res.png')
+    plot_quantiles(x_test, y_test, tau_vec, true_quantiles_test, 'moon_plots/true_quantiles.png')
 
 if __name__ == "__main__":
     main()

@@ -16,8 +16,8 @@ class l1_p(layers.Layer): #This class builds on the layer class of keras.
         self.input_shape_1 = input_shape[-1]    # Equals the number of neurons in the previous layer
 
         ### Build delta
-        self.delta_coef_matrix = tf.Variable( tf.random.normal( shape = [self.input_shape_1, self.number_of_quantiles]))
-        self.delta_0_matrix = tf.Variable( tf.random.normal( shape=[1, self.number_of_quantiles]))
+        self.delta_coef_matrix = tf.Variable( tf.random.normal(mean=0, stddev=0, shape = [self.input_shape_1, self.number_of_quantiles]))
+        self.delta_0_matrix = tf.Variable( tf.random.normal(mean=0, stddev=0, shape=[1, self.number_of_quantiles]))
 
 
     def call(self, inputs, **kwargs):

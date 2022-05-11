@@ -6,6 +6,70 @@ import pandas as pd
 from QRNN import QRNN_Dense, QRNN_Conv, QRNN_LSTM, objective_function,optimize_l1_NMQN
 from window_data import WindowGenerator
 
+def build_model_Dense_adap(hp):
+    units = hp.Int("units", min_value=4, max_value=32, step=4)
+    initial_lr = hp.Float("lr", min_value=1e-2, max_value=2e-2, step = 2e-3)
+    decay_rate = hp.Float("decay_rate", min_value=0.1, max_value=0.8, step = 0.1)
+    penalty_1 = hp.Int("penalty_1", min_value=30, max_value=70, step = 10)
+    penalty_2 = hp.Float("penalty_2", min_value = 0.000, max_value = 0.005, step = 0.001)
+    # call existing model-building code with the hyperparameter values.
+    tau_vec = np.append(0.05, np.arange(0.1, 1, 0.1))
+    tau_vec = np.append(tau_vec, 0.95)
+    model = QRNN_Dense(units, units, len(tau_vec), penalty_1 = penalty_1, penalty_2 = penalty_2)
+    loss_fn = lambda x, z: objective_function(x, z, tau_vec)
+
+    lr_schedule = keras.optimizers.schedules.ExponentialDecay(
+        initial_learning_rate=initial_lr,
+        decay_steps=250,
+        decay_rate=decay_rate)
+    model.compile(optimizer=keras.optimizers.Adam(learning_rate=lr_schedule),
+                  loss=loss_fn)
+    return model
+
+def build_model_Conv_adap(hp):
+    units = hp.Int("units", min_value=4, max_value=32, step=4)
+    initial_lr = hp.Float("lr", min_value=1e-2, max_value=2e-2, step = 2e-3)
+    decay_rate = hp.Float("decay_rate", min_value=0.1, max_value=0.8, step = 0.1)
+    penalty_1 = hp.Int("penalty_1", min_value=30, max_value=70, step = 10)
+    penalty_2 = hp.Float("penalty_2", min_value = 0.000, max_value = 0.005, step = 0.001)
+    # call existing model-building code with the hyperparameter values.
+    tau_vec = np.append(0.05, np.arange(0.1, 1, 0.1))
+    tau_vec = np.append(tau_vec, 0.95)
+    model = QRNN_Conv(units, units, len(tau_vec), kernel_size=4, penalty_1 = penalty_1, penalty_2 = penalty_2)
+    loss_fn = lambda x, z: objective_function(x, z, tau_vec)
+
+    lr_schedule = keras.optimizers.schedules.ExponentialDecay(
+        initial_learning_rate=initial_lr,
+        decay_steps=250,
+        decay_rate=decay_rate)
+
+    model.compile(optimizer=keras.optimizers.Adam(learning_rate=lr_schedule),
+                  loss=loss_fn)
+    return model
+
+def build_model_LSTM_adap(hp):
+    units = hp.Int("units", min_value=4, max_value=32, step=4)
+    initial_lr = hp.Float("lr", min_value=1e-2, max_value=2e-2, step = 2e-3)
+    decay_rate = hp.Float("decay_rate", min_value=0.1, max_value=0.8, step = 0.1)
+    penalty_1 = hp.Int("penalty_1", min_value=30, max_value=70, step = 10)
+    penalty_2 = hp.Float("penalty_2", min_value = 0.000, max_value = 0.005, step = 0.001)
+    # call existing model-building code with the hyperparameter values.
+    tau_vec = np.append(0.05, np.arange(0.1, 1, 0.1))
+    tau_vec = np.append(tau_vec, 0.95)
+    model = QRNN_LSTM(units, len(tau_vec), penalty_1 = penalty_1, penalty_2 = penalty_2)
+    loss_fn = lambda x, z: objective_function(x, z, tau_vec)
+
+    lr_schedule = keras.optimizers.schedules.ExponentialDecay(
+        initial_learning_rate=initial_lr,
+        decay_steps=250,
+        decay_rate=decay_rate)
+
+    model.compile(optimizer=keras.optimizers.Adam(learning_rate=lr_schedule),
+                  loss=loss_fn)
+    return model
+
+
+
 
 def build_model_Dense(hp):
     units = hp.Int("units", min_value=4, max_value=32, step=4)
@@ -58,7 +122,7 @@ train_frac = 0.7   # train test split fraction
 val_frac = 0.2
 test_frac = 0.1
 
-df = pd.read_csv('empirical_data/data_per_country/JPN.csv', index_col = 0)
+df = pd.read_csv('../empirical_data/data_per_country/JPN.csv', index_col = 0)
 n = len(df)
 train_df = df[0:int(n * train_frac)]
 val_df = df[int(n * train_frac):int(n * (train_frac + val_frac))]
